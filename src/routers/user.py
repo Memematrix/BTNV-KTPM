@@ -1,0 +1,115 @@
+from typing import Annotated
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from src.schemas import UserResponse, RegisterRequest, TokenResponse, LoginRequest
+from src.models import User
+from src.common.config import settings
+
+
+
+from src.common.database import get_db
+from src.common.auth.hash_pw import hash_password as hashpw, verify_password
+from src.common.auth.jwt import create_access_token
+from src.common.auth.middleware import get_current_user, CurrentUser
+
+router = APIRouter()
+
+@router.post(
+    "/register",
+    response_model=UserResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Đăng ký tài khoản (không cần xác thực)",
+)
+async def register(
+    payload: RegisterRequest,
+    db: Annotated[AsyncSession, Depends(get_db)]
+):
+    result = await db.execute(select(User).where(User.username == payload.username))
+    existing_user = result.scalars().first()
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username already exist"
+        )
+
+    hash_pw = hashpw(payload.password)
+    new_user = User(
+        username = payload.username,
+        password_hash = hash_pw,
+        name = payload.name,
+        phone = payload.phone
+    )
+
+    db.add(new_user)
+    await db.commit()
+    await db.refresh(new_user)
+    return new_user
+
+
+@router.post(
+    "/login",
+    response_model=TokenResponse,
+)
+async def login(
+    payload: LoginRequest,
+    request: Request,
+    response: Response,
+    db: Annotated[AsyncSession, Depends(get_db)]
+):
+
+    result = await db.execute(select(User).where(User.username == payload.username))
+    user = result.scalars().first()
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Incorrect username"
+        )
+    hash_pw = user.password_hash
+    if verify_password(payload.password, hash_pw):
+        token = create_access_token(
+            user_id=user.id,
+            role=user.role
+        )
+
+        response.set_cookie(
+            key="access_token",
+            value=token,
+            httponly=True,
+            secure=request.url.scheme == "https",
+            samesite="lax",
+            max_age=settings.jwt_expire_minutes * 60,
+            path="/showtimes",
+        )
+
+        return {
+            "access_token": token,
+            "token_type": "bearer",
+            "user": user
+        }
+
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Incorrect password"
+    )
+
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+async def logout(response: Response):
+    response.delete_cookie("access_token", path="/showtimes")
+
+
+
+@router.get(
+    "/me",
+    response_model=UserResponse,
+    summary="Thông tin user hiện tại (cần xác thực) — endpoint GET có auth theo yêu cầu đề bài",
+)
+async def get_me(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    result = await db.execute(select(User).where(User.id == current_user.id))
+    user = result.scalars().first()
+
+    return user
