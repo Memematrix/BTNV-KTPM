@@ -1,0 +1,28 @@
+{
+  "measured_at_utc": "2026-10-29T02:27:35.730771+00:00",
+  "passed": 22,
+  "checks": [
+    "Health http://127.0.0.1:18000",
+    "Health http://127.0.0.1:18001",
+    "Health http://127.0.0.1:18002",
+    "User registration routed through gateway",
+    "Login returns JWT",
+    "Gateway rejects missing JWT",
+    "Gateway rejects forged identity",
+    "Direct service rejects forged identity",
+    "Gateway rejects invalid JWT",
+    "User profile routing",
+    "Create order through gateway",
+    "Dashboard aggregates current user and their orders",
+    "Issue avatar upload URL",
+    "Presigned PUT expires after five minutes",
+    "Presigned PUT restricted to current user's avatar key",
+    "Real direct upload to MinIO without application JWT",
+    "Issue avatar download URL",
+    "Download matches uploaded avatar bytes",
+    "Avatar bucket is private",
+    "Signed URL cannot target another user's object",
+    "MinIO rejects an expired five-minute URL",
+    "Gateway permits ten requests and rejects request eleven"
+  ]
+}
